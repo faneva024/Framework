@@ -9,7 +9,7 @@ BIN_DIR="bin"
 # Pour Jakarta EE 9+, préférez un nom explicite comme "lib/jakarta.servlet-api-6.0.0.jar"
 JAKARTA_API_JAR="lib/servlet-api.jar"
 
-echo " Nettoyage des anciens dossiers..."
+#  Nettoyage des anciens dossiers..."
 rm -rf "$BIN_DIR"
 rm -f "$JAR_NAME"
 mkdir "$BIN_DIR"
@@ -32,8 +32,8 @@ if [ $RM_STATUS -eq 0 ]; then
     jar -cvf "../$JAR_NAME" .
     cd ..
     
-    echo " Terminé ! Votre fichier '$JAR_NAME' est prêt."
-    echo " Vous pouvez maintenant le copier dans le dossier WEB-INF/lib de votre autre projet."
+    echo " fichier '$JAR_NAME'  prêt."
+
 else
     echo " Échec de la compilation. Vérifiez vos imports et le chemin de votre API Servlet."
     exit 1

@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.net.URL;
@@ -80,5 +81,15 @@ public class Utilitaires {
         }
 
         return false;
+    }
+
+    public static List<Method> getMethodesAnnotees(Class<?> classe, Class<? extends Annotation> annotation) {
+        List<Method> listeMethodes = new ArrayList<>();
+        for (Method methode : classe.getDeclaredMethods()) {
+            if (methode.isAnnotationPresent(annotation)) {
+                listeMethodes.add(methode);
+            }
+        }
+        return listeMethodes;
     }
 }
