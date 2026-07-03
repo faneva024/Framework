@@ -10,4 +10,5 @@ import java.lang.annotation.Target;
 
 public @interface UrlMapping {
     String value();
+    String METHOD() default "GET";
 }
