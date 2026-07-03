@@ -1,4 +1,4 @@
-package controllers;
+package models;
 
 public class UrlMethode {
     private String url;
@@ -47,6 +47,4 @@ public class UrlMethode {
         return result;
     }
             
-    
-
 }   
