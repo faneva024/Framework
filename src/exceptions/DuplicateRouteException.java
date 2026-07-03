@@ -1,4 +1,6 @@
-package controllers;
+package exceptions;
+
+import models.Mapping;
 
 public class DuplicateRouteException extends Exception {
     public DuplicateRouteException(String url, String httpMethod, Mapping firstMapping, Mapping secondMapping) {

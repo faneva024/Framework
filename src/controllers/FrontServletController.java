@@ -15,6 +15,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
+import exceptions.DuplicateRouteException;
+import models.*;
 import utilitaires.Utilitaires;
 
 public class FrontServletController extends HttpServlet {
@@ -115,12 +118,31 @@ public class FrontServletController extends HttpServlet {
         if (mapping == null) {
             out.println("url indefini : " + urlRecherchee);
         } else {
+
             res.setContentType("text/html;charset=UTF-8");
+
             out.println("URL : " + urlRecherchee);
             out.println("<br>");
             out.println("Controller : " + mapping.getNomClasse());
             out.println("<br>");
             out.println("Methode : " + mapping.getNomMethode());
+            try {
+                Class<?> controllerClass = Class.forName(getInitParameter("Controllers")+ "." + mapping.getNomClasse());
+
+                Object controller = controllerClass.getDeclaredConstructor().newInstance();
+
+                Method method = controllerClass.getDeclaredMethod(mapping.getNomMethode());
+
+                Object retour = method.invoke(controller);
+
+                out.println("<br><br>");
+                out.println(retour);
+
+            }
+            catch (Exception e) {
+                throw new ServletException(e);
+            }
+        
         }
     }
 }
