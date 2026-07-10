@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import models.Mapping;
+import models.ModelView;
 import models.UrlMethode;
 
 public class FrontServletController extends HttpServlet {
@@ -58,8 +59,30 @@ public class FrontServletController extends HttpServlet {
             
             Object retour = method.invoke(controller);
 
-            // Rendu du résultat
-            if (retour != null) {
+            // GESTION DU RETOUR (ModelView ou String classique)
+            if (retour instanceof ModelView) {
+                ModelView mv = (ModelView) retour;
+                
+                // 1. Récupération des paramètres avec les termes de Spring
+                String prefix = getServletContext().getInitParameter("prefix");
+                String suffix = getServletContext().getInitParameter("suffix");
+                
+                // Sécurité au cas où les paramètres ne seraient pas définis dans web.xml
+                if (prefix == null) prefix = "";
+                if (suffix == null) suffix = "";
+                
+                // 2. Injection des données du ModelView dans la requête HTTP
+                for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                    req.setAttribute(entry.getKey(), entry.getValue());
+                }
+                
+                // 3. Construction du chemin final et transfert (Forward)
+                String viewPath = prefix + mv.getUrl() + suffix;
+                RequestDispatcher dispatcher = req.getRequestDispatcher(viewPath);
+                dispatcher.forward(req, res);
+                
+            } else if (retour != null) {
+                // Rendu du résultat classique (String ou autre)
                 out.println(retour.toString());
             }
 
