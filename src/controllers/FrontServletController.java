@@ -11,6 +11,10 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+// Importations Spring nécessaires pour récupérer le conteneur IoC
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.context.support.WebApplicationContextUtils;
+
 import models.Mapping;
 import models.ModelView;
 import models.UrlMethode;
@@ -49,21 +53,29 @@ public class FrontServletController extends HttpServlet {
             res.setContentType("text/html;charset=UTF-8");
             PrintWriter out = res.getWriter();
 
-            // Récupération du package depuis le ServletContext
+            // 1. Récupération du conteneur Spring (ApplicationContext) associé au ServletContext
+            WebApplicationContext springContext = WebApplicationContextUtils.getRequiredWebApplicationContext(getServletContext());
+
+            // 2. Récupération du nom du package depuis le ServletContext
             String controllerPackage = getServletContext().getInitParameter("Controllers");
             
-            // Instanciation et invocation dynamique (Réflexion)
+            // 3. Récupération de la classe du contrôleur par son nom complet
             Class<?> controllerClass = Class.forName(controllerPackage + "." + mapping.getNomClasse());
-            Object controller = controllerClass.getDeclaredConstructor().newInstance();
-            Method method = controllerClass.getDeclaredMethod(mapping.getNomMethode());
             
+            // 4. RÉSOLUTION DE LA CORRECTION : 
+            // On demande l'instance (le Bean) directement à Spring au lieu d'utiliser "newInstance()".
+            // De cette manière, l'instance récupérée possède toutes ses dépendances (@Autowired, @Service...) fonctionnelles.
+            Object controller = springContext.getBean(controllerClass);
+            
+            // 5. Récupération et invocation dynamique de la méthode cible
+            Method method = controllerClass.getDeclaredMethod(mapping.getNomMethode());
             Object retour = method.invoke(controller);
 
             // GESTION DU RETOUR (ModelView ou String classique)
             if (retour instanceof ModelView) {
                 ModelView mv = (ModelView) retour;
                 
-                // 1. Récupération des paramètres avec les termes de Spring
+                // Récupération des paramètres de préfixe et de suffixe (termes Spring)
                 String prefix = getServletContext().getInitParameter("prefix");
                 String suffix = getServletContext().getInitParameter("suffix");
                 
@@ -71,12 +83,12 @@ public class FrontServletController extends HttpServlet {
                 if (prefix == null) prefix = "";
                 if (suffix == null) suffix = "";
                 
-                // 2. Injection des données du ModelView dans la requête HTTP
+                // Injection des données du ModelView dans la requête HTTP
                 for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
                     req.setAttribute(entry.getKey(), entry.getValue());
                 }
                 
-                // 3. Construction du chemin final et transfert (Forward)
+                // Construction du chemin final et transfert (Forward)
                 String viewPath = prefix + mv.getUrl() + suffix;
                 RequestDispatcher dispatcher = req.getRequestDispatcher(viewPath);
                 dispatcher.forward(req, res);
