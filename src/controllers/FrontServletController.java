@@ -19,6 +19,9 @@ import models.Mapping;
 import models.ModelView;
 import models.UrlMethode;
 
+import com.google.gson.Gson;
+import annotations.ApiRest;
+
 public class FrontServletController extends HttpServlet {
 
     @SuppressWarnings("unchecked")
@@ -51,7 +54,7 @@ public class FrontServletController extends HttpServlet {
 
         try {
             res.setContentType("text/html;charset=UTF-8");
-            PrintWriter out = res.getWriter();
+            // PrintWriter out = res.getWriter();
 
             // 1. Récupération du conteneur Spring (ApplicationContext) associé au ServletContext
             WebApplicationContext springContext = WebApplicationContextUtils.getRequiredWebApplicationContext(getServletContext());
@@ -71,31 +74,45 @@ public class FrontServletController extends HttpServlet {
             Method method = controllerClass.getDeclaredMethod(mapping.getNomMethode());
             Object retour = method.invoke(controller);
 
-            // GESTION DU RETOUR (ModelView ou String classique)
-            if (retour instanceof ModelView) {
-                ModelView mv = (ModelView) retour;
-                
-                // Récupération des paramètres de préfixe et de suffixe (termes Spring)
-                String prefix = getServletContext().getInitParameter("prefix");
-                String suffix = getServletContext().getInitParameter("suffix");
-                
-                // Sécurité au cas où les paramètres ne seraient pas définis dans web.xml
-                if (prefix == null) prefix = "";
-                if (suffix == null) suffix = "";
-                
-                // Injection des données du ModelView dans la requête HTTP
-                for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
-                    req.setAttribute(entry.getKey(), entry.getValue());
+            // -----------------------------------------------------------
+            // Traitement de l'annotation @ApiRest
+            // -----------------------------------------------------------
+            if (method.isAnnotationPresent(ApiRest.class)) {
+                res.setContentType("application/json;charset=UTF-8");
+                PrintWriter out = res.getWriter();
+
+                if (retour instanceof String) {
+                    // Si la méthode renvoie déjà une chaîne de caractères
+                    out.print((String) retour);
+                } else if (retour != null) {
+                    // Pour tout autre objet (List, Map, Objet métier...), conversion automatique en JSON
+                    Gson gson = new Gson();
+                    out.print(gson.toJson(retour));
                 }
-                
-                // Construction du chemin final et transfert (Forward)
-                String viewPath = prefix + mv.getUrl() + suffix;
-                RequestDispatcher dispatcher = req.getRequestDispatcher(viewPath);
-                dispatcher.forward(req, res);
-                
-            } else if (retour != null) {
-                // Rendu du résultat classique (String ou autre)
-                out.println(retour.toString());
+            } else {
+                // ----------------------------------------------------------
+                // COMPORTEMENT CLASSIQUE (ModelView ou HTML brut)
+                // -----------------------------------------------------------
+                if (retour instanceof ModelView) {
+                    ModelView mv = (ModelView) retour;
+                    String prefix = getServletContext().getInitParameter("prefix");
+                    String suffix = getServletContext().getInitParameter("suffix");
+                    
+                    if (prefix == null) prefix = "";
+                    if (suffix == null) suffix = "";
+                    
+                    for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                        req.setAttribute(entry.getKey(), entry.getValue());
+                    }
+                    
+                    String viewPath = prefix + mv.getUrl() + suffix;
+                    RequestDispatcher dispatcher = req.getRequestDispatcher(viewPath);
+                    dispatcher.forward(req, res);
+                    
+                } else if (retour != null) {
+                    res.setContentType("text/html;charset=UTF-8");
+                    res.getWriter().println(retour.toString());
+                }
             }
 
         } catch (Exception e) {
