@@ -5,9 +5,12 @@ import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.List;
 import java.net.URL;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 public class Utilitaires {
 
@@ -91,5 +94,49 @@ public class Utilitaires {
             }
         }
         return listeMethodes;
+    }
+
+    /**
+     *  Résolution dynamiquement des arguments attendus par la méthode
+     */
+    public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter param = parameters[i];
+            String paramName = param.getName(); // Nécessite l'option de compilation -parameters
+            String paramValue = request.getParameter(paramName);
+            
+            // Conversion via la méthode existante
+            args[i] = castParameterValue(paramValue, param.getType());
+        }
+
+        return args;
+    }
+
+    /**
+     *  Convertit une chaîne de caractères HTTP vers le type Java cible.
+     */
+    public static Object castParameterValue(String value, Class<?> type) {
+        if (value == null) {
+            if (type == int.class || type == double.class || type == float.class) return 0;
+            if (type == boolean.class) return false;
+            return null;
+        }
+
+        if (value.trim().isEmpty() && type != String.class) {
+            if (type == int.class || type == double.class || type == float.class) return 0;
+            if (type == boolean.class) return false;
+            return null;
+        }
+
+        if (type == String.class) return value;
+        if (type == int.class || type == Integer.class) return Integer.parseInt(value);
+        if (type == double.class || type == Double.class) return Double.parseDouble(value);
+        if (type == boolean.class || type == Boolean.class) return Boolean.parseBoolean(value);
+        if (type == float.class || type == Float.class) return Float.parseFloat(value);
+
+        return value; 
     }
 }

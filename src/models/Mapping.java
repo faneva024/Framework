@@ -1,20 +1,29 @@
 package models;
 
+import java.lang.reflect.Method;
+
 public class Mapping {
-
     private String nomClasse;
-    private String nomMethode;
+    private Method methode; // Remplacement : String nomMethode -> Method methode
 
-    public Mapping(String nomClasse, String nomMethode) {
+    public Mapping(String nomClasse, Method methode) {
         this.nomClasse = nomClasse;
-        this.nomMethode = nomMethode;
+        this.methode = methode;
     }
 
     public String getNomClasse() {
         return nomClasse;
     }
 
-    public String getNomMethode() {
-        return nomMethode;
+    public void setNomClasse(String nomClasse) {
+        this.nomClasse = nomClasse;
+    }
+
+    public Method getMethode() {
+        return methode;
+    }
+
+    public void setMethode(Method methode) {
+        this.methode = methode;
     }
 }
