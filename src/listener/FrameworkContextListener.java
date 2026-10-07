@@ -20,7 +20,8 @@ import utilitaires.Utilitaires;
 @WebListener
 public class FrameworkContextListener implements ServletContextListener {
 
-    @Override
+
+@Override
     public void contextInitialized(ServletContextEvent sce) {
         ServletContext context = sce.getServletContext();
         
@@ -55,11 +56,13 @@ public class FrameworkContextListener implements ServletContextListener {
                         Mapping existingMapping = urlMappings.get(key);
                         
                         if (existingMapping != null) {
+                            // On passe l'objet methode directement au Mapping
                             throw new DuplicateRouteException(url, httpMethod, existingMapping,
-                                    new Mapping(nomControleur, methode.getName()));
+                                    new Mapping(nomControleur, methode));
                         }
 
-                        urlMappings.put(key, new Mapping(nomControleur, methode.getName()));
+                        //  On passe l'objet methode au lieu de methode.getName()
+                        urlMappings.put(key, new Mapping(nomControleur, methode));
                     }
                 }
             }
@@ -79,7 +82,6 @@ public class FrameworkContextListener implements ServletContextListener {
 
     @Override
     public void contextDestroyed(ServletContextEvent sce) {
-        // Nettoyage si nécessaire
         sce.getServletContext().removeAttribute("routes");
     }
 }

@@ -11,30 +11,28 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-// Importations Spring nécessaires pour récupérer le conteneur IoC
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.support.WebApplicationContextUtils;
 
 import models.Mapping;
 import models.ModelView;
 import models.UrlMethode;
+import utilitaires.Utilitaires;
 
 import com.google.gson.Gson;
 import annotations.ApiRest;
 
 public class FrontServletController extends HttpServlet {
 
+
     @SuppressWarnings("unchecked")
     protected void processRequest(HttpServletRequest req, HttpServletResponse res)
             throws ServletException, IOException {
         
-        // Récupération de la table de routage générée par le Listener
         Map<UrlMethode, Mapping> urlMappings = (Map<UrlMethode, Mapping>) getServletContext().getAttribute("routes");
 
         if (urlMappings == null) {
-            res.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            res.setContentType("text/plain;charset=UTF-8");
-            res.getWriter().println("Erreur Interne: La table de routage n'a pas été initialisée.");
+            res.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Erreur Interne: La table de routage n'a pas été initialisée.");
             return;
         }
 
@@ -46,33 +44,29 @@ public class FrontServletController extends HttpServlet {
         Mapping mapping = urlMappings.get(new UrlMethode(urlRecherchee, methode));
 
         if (mapping == null) {
-            res.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            res.setContentType("text/html;charset=UTF-8");
-            res.getWriter().println("<h3>URL indéfinie ou méthode HTTP non supportée : " + urlRecherchee + " [" + methode + "]</h3>");
+            res.sendError(HttpServletResponse.SC_NOT_FOUND, "URL indéfinie ou méthode HTTP non supportée : " + urlRecherchee + " [" + methode + "]");
             return;
         }
 
         try {
             res.setContentType("text/html;charset=UTF-8");
-            // PrintWriter out = res.getWriter();
 
-            // 1. Récupération du conteneur Spring (ApplicationContext) associé au ServletContext
+            // 1. Récupération du conteneur Spring
             WebApplicationContext springContext = WebApplicationContextUtils.getRequiredWebApplicationContext(getServletContext());
 
-            // 2. Récupération du nom du package depuis le ServletContext
+            // 2. Instanciation dynamique du contrôleur via Spring
             String controllerPackage = getServletContext().getInitParameter("Controllers");
-            
-            // 3. Récupération de la classe du contrôleur par son nom complet
             Class<?> controllerClass = Class.forName(controllerPackage + "." + mapping.getNomClasse());
-            
-            // 4. RÉSOLUTION DE LA CORRECTION : 
-            // On demande l'instance (le Bean) directement à Spring au lieu d'utiliser "newInstance()".
-            // De cette manière, l'instance récupérée possède toutes ses dépendances (@Autowired, @Service...) fonctionnelles.
             Object controller = springContext.getBean(controllerClass);
             
-            // 5. Récupération et invocation dynamique de la méthode cible
-            Method method = controllerClass.getDeclaredMethod(mapping.getNomMethode());
-            Object retour = method.invoke(controller);
+            // 3.  Recuperation de la Method
+            Method method = mapping.getMethode();
+
+            // 4. Délégation totale du Binding (extraction des arguments) à Utilitaires
+            Object[] args = Utilitaires.resolveArguments(method, req);
+
+            // 5. Invocation de la méthode
+            Object retour = method.invoke(controller, args);
 
             // -----------------------------------------------------------
             // Traitement de l'annotation @ApiRest
@@ -82,16 +76,14 @@ public class FrontServletController extends HttpServlet {
                 PrintWriter out = res.getWriter();
 
                 if (retour instanceof String) {
-                    // Si la méthode renvoie déjà une chaîne de caractères
                     out.print((String) retour);
                 } else if (retour != null) {
-                    // Pour tout autre objet (List, Map, Objet métier...), conversion automatique en JSON
                     Gson gson = new Gson();
                     out.print(gson.toJson(retour));
                 }
             } else {
                 // ----------------------------------------------------------
-                // COMPORTEMENT CLASSIQUE (ModelView ou HTML brut)
+                // ModelView ou HTML brut
                 // -----------------------------------------------------------
                 if (retour instanceof ModelView) {
                     ModelView mv = (ModelView) retour;
@@ -116,7 +108,7 @@ public class FrontServletController extends HttpServlet {
             }
 
         } catch (Exception e) {
-            throw new ServletException("Erreur lors de l'exécution de l'action : " + mapping.getNomClasse() + "." + mapping.getNomMethode(), e);
+            throw new ServletException("Erreur lors de l'exécution de l'action : " + mapping.getNomClasse() + "." + mapping.getMethode().getName(), e);
         }
     }
 
