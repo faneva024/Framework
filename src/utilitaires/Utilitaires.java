@@ -6,6 +6,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.net.URL;
@@ -97,7 +98,56 @@ public class Utilitaires {
     }
 
     /**
-     *  Résolution dynamiquement des arguments attendus par la méthode
+     * NOUVEAUTÉ SPRINT 7-bis : Vérifie si la classe est un type de base/primitif
+     */
+    public static boolean isBasicType(Class<?> type) {
+        return type.isPrimitive()
+                || type == String.class
+                || type == Integer.class || type == Double.class
+                || type == Boolean.class || type == Float.class
+                || type == Long.class || type == Short.class
+                || type == Byte.class || type == Character.class
+                || type == java.sql.Date.class
+                || type == java.util.Date.class;
+    }
+
+    /**
+     * NOUVEAUTÉ SPRINT 7-bis : Instancie et remplit un objet (JavaBean) à partir de la requête HTTP
+     */
+    public static Object hydrateObject(Class<?> clazz, HttpServletRequest request) throws Exception {
+        // 1. Instanciation de l'objet via son constructeur sans argument
+        Object instance = clazz.getDeclaredConstructor().newInstance();
+
+        // 2. Parours de tous les champs de la classe (et superclasses si besoin)
+        for (Field field : clazz.getDeclaredFields()) {
+            String fieldName = field.getName();
+            String parameterValue = request.getParameter(fieldName);
+
+            // Si le paramètre existe dans la requête HTTP
+            if (parameterValue != null && !parameterValue.trim().isEmpty()) {
+                // Conversion de la valeur vers le type de l'attribut
+                Object convertedValue = castParameterValue(parameterValue, field.getType());
+
+                // Construction du nom du setter (ex: "nom" -> "setNom")
+                String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+
+                try {
+                    // Tentative d'appel du setter public
+                    Method setter = clazz.getMethod(setterName, field.getType());
+                    setter.invoke(instance, convertedValue);
+                } catch (NoSuchMethodException e) {
+                    // Si pas de setter public, écriture directe dans le champ privé
+                    field.setAccessible(true);
+                    field.set(instance, convertedValue);
+                }
+            }
+        }
+
+        return instance;
+    }
+
+    /**
+     * Résolution des arguments de la méthode (Supporte Types Simples ET Objets)
      */
     public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
         Parameter[] parameters = method.getParameters();
@@ -105,28 +155,28 @@ public class Utilitaires {
 
         for (int i = 0; i < parameters.length; i++) {
             Parameter param = parameters[i];
-            String paramName = param.getName(); // Nécessite l'option de compilation -parameters
-            String paramValue = request.getParameter(paramName);
-            
-            // Conversion via la méthode existante
-            args[i] = castParameterValue(paramValue, param.getType());
+            Class<?> paramType = param.getType();
+
+            if (isBasicType(paramType)) {
+                // Cas 1 : Type simple (String, int, Date...)
+                String paramName = param.getName();
+                String paramValue = request.getParameter(paramName);
+                args[i] = castParameterValue(paramValue, paramType);
+            } else {
+                // Cas 2 : Type complexe (Objet/DTO) - Hydratation automatique
+                args[i] = hydrateObject(paramType, request);
+            }
         }
 
         return args;
     }
 
     /**
-     *  Convertit une chaîne de caractères HTTP vers le type Java cible.
+     * Conversion d'une valeur String vers le type Java cible
      */
     public static Object castParameterValue(String value, Class<?> type) {
-        if (value == null) {
-            if (type == int.class || type == double.class || type == float.class) return 0;
-            if (type == boolean.class) return false;
-            return null;
-        }
-
-        if (value.trim().isEmpty() && type != String.class) {
-            if (type == int.class || type == double.class || type == float.class) return 0;
+        if (value == null || (value.trim().isEmpty() && type != String.class)) {
+            if (type == int.class || type == double.class || type == float.class || type == long.class) return 0;
             if (type == boolean.class) return false;
             return null;
         }
@@ -136,7 +186,8 @@ public class Utilitaires {
         if (type == double.class || type == Double.class) return Double.parseDouble(value);
         if (type == boolean.class || type == Boolean.class) return Boolean.parseBoolean(value);
         if (type == float.class || type == Float.class) return Float.parseFloat(value);
+        if (type == java.sql.Date.class) return java.sql.Date.valueOf(value);
 
-        return value; 
+        return value;
     }
 }
