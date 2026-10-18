@@ -1,39 +1,39 @@
 package utilitaires;
 
 import java.io.File;
+import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Properties;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Part;
+
+import models.FileUpload;
 
 public class Utilitaires {
 
     public static List<String> getClassByPackageAndAnnotation(Class<? extends Annotation> annotation,
-            String packageName, ElementType type)
-            throws Exception {
-        try {
-            if (typeElementValide(annotation, type)) {
-                List<String> listeClass = new ArrayList<>();
-                List<Class<?>> classInPackage = getClassByPackage(packageName);
-                List<Class<?>> classByAnnotation = filterByAnnotation(classInPackage, annotation);
+            String packageName, ElementType type) throws Exception {
+        if (typeElementValide(annotation, type)) {
+            List<String> listeClass = new ArrayList<>();
+            List<Class<?>> classInPackage = getClassByPackage(packageName);
+            List<Class<?>> classByAnnotation = filterByAnnotation(classInPackage, annotation);
 
-                for (Class<?> class1 : classByAnnotation) {
-                    listeClass.add(class1.getSimpleName());
-                }
-
-                return listeClass;
+            for (Class<?> class1 : classByAnnotation) {
+                listeClass.add(class1.getSimpleName());
             }
-        } catch (Exception e) {
-            throw e;
-        }
 
+            return listeClass;
+        }
         return null;
     }
 
@@ -97,9 +97,6 @@ public class Utilitaires {
         return listeMethodes;
     }
 
-    /**
-     * NOUVEAUTÉ SPRINT 7-bis : Vérifie si la classe est un type de base/primitif
-     */
     public static boolean isBasicType(Class<?> type) {
         return type.isPrimitive()
                 || type == String.class
@@ -112,33 +109,75 @@ public class Utilitaires {
     }
 
     /**
-     * NOUVEAUTÉ SPRINT 7-bis : Instancie et remplit un objet (JavaBean) à partir de la requête HTTP
+     * Lit une propriété globale depuis le fichier app.properties s'il existe
+     */
+    public static String getProperty(String key) {
+        try (InputStream input = Utilitaires.class.getClassLoader().getResourceAsStream("app.properties")) {
+            if (input == null) return null;
+            Properties prop = new Properties();
+            prop.load(input);
+            return prop.getProperty(key);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Convertit une Part Jakarta Servlet en objet FileUpload
+     */
+    public static FileUpload processFileUpload(Part part) throws Exception {
+        if (part == null || part.getSubmittedFileName() == null || part.getSubmittedFileName().trim().isEmpty()) {
+            return null;
+        }
+        String fileName = part.getSubmittedFileName();
+        byte[] bytes;
+        try (InputStream inputStream = part.getInputStream()) {
+            bytes = inputStream.readAllBytes();
+        }
+        return new FileUpload(fileName, bytes);
+    }
+
+    /**
+     * Hydrate un objet complexe à partir des paramètres HTTP et des fichiers
      */
     public static Object hydrateObject(Class<?> clazz, HttpServletRequest request) throws Exception {
-        // 1. Instanciation de l'objet via son constructeur sans argument
         Object instance = clazz.getDeclaredConstructor().newInstance();
+        boolean isMultipart = request.getContentType() != null && 
+                              request.getContentType().toLowerCase().startsWith("multipart/form-data");
 
-        // 2. Parours de tous les champs de la classe (et superclasses si besoin)
         for (Field field : clazz.getDeclaredFields()) {
             String fieldName = field.getName();
-            String parameterValue = request.getParameter(fieldName);
+            Class<?> fieldType = field.getType();
 
-            // Si le paramètre existe dans la requête HTTP
-            if (parameterValue != null && !parameterValue.trim().isEmpty()) {
-                // Conversion de la valeur vers le type de l'attribut
-                Object convertedValue = castParameterValue(parameterValue, field.getType());
+            if (fieldType == FileUpload.class) {
+                // Attribut de type FileUpload dans un objet métier
+                if (isMultipart) {
+                    Part part = request.getPart(fieldName);
+                    FileUpload fileUpload = processFileUpload(part);
+                    invokeSetter(instance, clazz, fieldName, fieldType, fileUpload);
+                }
+            } else if (isBasicType(fieldType)) {
+                String parameterValue = request.getParameter(fieldName);
+                if (parameterValue != null && !parameterValue.trim().isEmpty()) {
+                    Object convertedValue = castParameterValue(parameterValue, fieldType);
+                    invokeSetter(instance, clazz, fieldName, fieldType, convertedValue);
+                }
+            } else {
+                // Objets imbriqués (ex: departement.nom)
+                String prefix = fieldName + ".";
+                boolean hasNestedParams = false;
 
-                // Construction du nom du setter (ex: "nom" -> "setNom")
-                String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+                Enumeration<String> paramNames = request.getParameterNames();
+                while (paramNames.hasMoreElements()) {
+                    if (paramNames.nextElement().startsWith(prefix)) {
+                        hasNestedParams = true;
+                        break;
+                    }
+                }
 
-                try {
-                    // Tentative d'appel du setter public
-                    Method setter = clazz.getMethod(setterName, field.getType());
-                    setter.invoke(instance, convertedValue);
-                } catch (NoSuchMethodException e) {
-                    // Si pas de setter public, écriture directe dans le champ privé
-                    field.setAccessible(true);
-                    field.set(instance, convertedValue);
+                if (hasNestedParams) {
+                    Object nestedInstance = hydrateNestedObject(fieldType, prefix, request);
+                    invokeSetter(instance, clazz, fieldName, fieldType, nestedInstance);
                 }
             }
         }
@@ -146,24 +185,73 @@ public class Utilitaires {
         return instance;
     }
 
+    private static Object hydrateNestedObject(Class<?> clazz, String prefix, HttpServletRequest request) throws Exception {
+        Object instance = clazz.getDeclaredConstructor().newInstance();
+
+        for (Field field : clazz.getDeclaredFields()) {
+            String fieldName = field.getName();
+            Class<?> fieldType = field.getType();
+            String fullParamName = prefix + fieldName;
+
+            if (isBasicType(fieldType)) {
+                String parameterValue = request.getParameter(fullParamName);
+                if (parameterValue != null && !parameterValue.trim().isEmpty()) {
+                    Object convertedValue = castParameterValue(parameterValue, fieldType);
+                    invokeSetter(instance, clazz, fieldName, fieldType, convertedValue);
+                }
+            } else {
+                String newPrefix = fullParamName + ".";
+                Object nestedInstance = hydrateNestedObject(fieldType, newPrefix, request);
+                invokeSetter(instance, clazz, fieldName, fieldType, nestedInstance);
+            }
+        }
+
+        return instance;
+    }
+
+    private static void invokeSetter(Object targetInstance, Class<?> clazz, String fieldName, Class<?> paramType, Object value) {
+        String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+        try {
+            Method setter = clazz.getMethod(setterName, paramType);
+            setter.invoke(targetInstance, value);
+        } catch (Exception e) {
+            try {
+                Field field = clazz.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.set(targetInstance, value);
+            } catch (Exception ex) {
+                // Ignore si inaccessible
+            }
+        }
+    }
+
     /**
-     * Résolution des arguments de la méthode (Supporte Types Simples ET Objets)
+     * Résolution des arguments pour l'exécution d'une méthode de contrôleur
      */
     public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
 
+        boolean isMultipart = request.getContentType() != null && 
+                              request.getContentType().toLowerCase().startsWith("multipart/form-data");
+
         for (int i = 0; i < parameters.length; i++) {
             Parameter param = parameters[i];
             Class<?> paramType = param.getType();
 
-            if (isBasicType(paramType)) {
-                // Cas 1 : Type simple (String, int, Date...)
+            if (paramType == FileUpload.class) {
+                // Cas 1 : Le paramètre de la méthode est directement FileUpload
+                if (isMultipart) {
+                    Part part = request.getPart(param.getName());
+                    args[i] = processFileUpload(part);
+                }
+            } else if (isBasicType(paramType)) {
+                // Cas 2 : Types basiques (String, int...)
                 String paramName = param.getName();
                 String paramValue = request.getParameter(paramName);
                 args[i] = castParameterValue(paramValue, paramType);
             } else {
-                // Cas 2 : Type complexe (Objet/DTO) - Hydratation automatique
+                // Cas 3 : Objets complexes
                 args[i] = hydrateObject(paramType, request);
             }
         }
@@ -171,9 +259,6 @@ public class Utilitaires {
         return args;
     }
 
-    /**
-     * Conversion d'une valeur String vers le type Java cible
-     */
     public static Object castParameterValue(String value, Class<?> type) {
         if (value == null || (value.trim().isEmpty() && type != String.class)) {
             if (type == int.class || type == double.class || type == float.class || type == long.class) return 0;
