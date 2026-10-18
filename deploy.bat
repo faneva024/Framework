@@ -27,7 +27,7 @@ echo ===============================
 REM Génère la liste des sources Java
 dir /S /B "%SRC_DIR%\*.java" > sources.txt
 
-javac -cp "%SERVLET_API%" -d "%BIN_DIR%" @sources.txt
+javac -cp "lib/*" -d bin @sources.txt
 
 if errorlevel 1 (
     echo.
