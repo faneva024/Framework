@@ -7,6 +7,7 @@ import java.util.Map;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,8 +23,8 @@ import utilitaires.Utilitaires;
 import com.google.gson.Gson;
 import annotations.ApiRest;
 
+@MultipartConfig //pour intercepter request.getParts()
 public class FrontServletController extends HttpServlet {
-
 
     @SuppressWarnings("unchecked")
     protected void processRequest(HttpServletRequest req, HttpServletResponse res)

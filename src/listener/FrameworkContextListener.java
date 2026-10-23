@@ -20,8 +20,7 @@ import utilitaires.Utilitaires;
 @WebListener
 public class FrameworkContextListener implements ServletContextListener {
 
-
-@Override
+    @Override
     public void contextInitialized(ServletContextEvent sce) {
         ServletContext context = sce.getServletContext();
         
@@ -61,7 +60,7 @@ public class FrameworkContextListener implements ServletContextListener {
                                     new Mapping(nomControleur, methode));
                         }
 
-                        //  On passe l'objet methode au lieu de methode.getName()
+                        // CORRECTION : On passe l'objet methode au lieu de methode.getName()
                         urlMappings.put(key, new Mapping(nomControleur, methode));
                     }
                 }
