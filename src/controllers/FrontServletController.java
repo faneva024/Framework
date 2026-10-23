@@ -24,6 +24,7 @@ import com.google.gson.Gson;
 import annotations.ApiRest;
 
 @MultipartConfig //pour intercepter request.getParts()
+
 public class FrontServletController extends HttpServlet {
 
     @SuppressWarnings("unchecked")
@@ -52,26 +53,20 @@ public class FrontServletController extends HttpServlet {
         try {
             res.setContentType("text/html;charset=UTF-8");
 
-            // 1. Récupération du conteneur Spring
             WebApplicationContext springContext = WebApplicationContextUtils.getRequiredWebApplicationContext(getServletContext());
 
-            // 2. Instanciation dynamique du contrôleur via Spring
             String controllerPackage = getServletContext().getInitParameter("Controllers");
             Class<?> controllerClass = Class.forName(controllerPackage + "." + mapping.getNomClasse());
             Object controller = springContext.getBean(controllerClass);
             
-            // 3.  Recuperation de la Method
             Method method = mapping.getMethode();
 
-            // 4. Délégation totale du Binding (extraction des arguments) à Utilitaires
+            // Résolution des arguments (Supporte Types Simples, Objets et FileUpload)
             Object[] args = Utilitaires.resolveArguments(method, req);
 
-            // 5. Invocation de la méthode
             Object retour = method.invoke(controller, args);
 
-            // -----------------------------------------------------------
-            // Traitement de l'annotation @ApiRest
-            // -----------------------------------------------------------
+            // Traitement @ApiRest
             if (method.isAnnotationPresent(ApiRest.class)) {
                 res.setContentType("application/json;charset=UTF-8");
                 PrintWriter out = res.getWriter();
@@ -83,9 +78,7 @@ public class FrontServletController extends HttpServlet {
                     out.print(gson.toJson(retour));
                 }
             } else {
-                // ----------------------------------------------------------
-                // ModelView ou HTML brut
-                // -----------------------------------------------------------
+                // Comportement classique
                 if (retour instanceof ModelView) {
                     ModelView mv = (ModelView) retour;
                     String prefix = getServletContext().getInitParameter("prefix");
