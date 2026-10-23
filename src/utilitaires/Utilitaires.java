@@ -1,7 +1,6 @@
 package utilitaires;
 
 import java.io.File;
-import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
@@ -12,12 +11,14 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.Properties;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.Part;
 
+import jakarta.servlet.http.Part;
 import models.FileUpload;
+import java.io.InputStream;
+
+import models.Session;
 
 public class Utilitaires {
 
@@ -97,6 +98,9 @@ public class Utilitaires {
         return listeMethodes;
     }
 
+    /**
+     * Vérifie si le type fourni est un type simple/primitif ou assimilé.
+     */
     public static boolean isBasicType(Class<?> type) {
         return type.isPrimitive()
                 || type == String.class
@@ -109,61 +113,23 @@ public class Utilitaires {
     }
 
     /**
-     * Lit une propriété globale depuis le fichier app.properties s'il existe
-     */
-    public static String getProperty(String key) {
-        try (InputStream input = Utilitaires.class.getClassLoader().getResourceAsStream("app.properties")) {
-            if (input == null) return null;
-            Properties prop = new Properties();
-            prop.load(input);
-            return prop.getProperty(key);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Convertit une Part Jakarta Servlet en objet FileUpload
-     */
-    public static FileUpload processFileUpload(Part part) throws Exception {
-        if (part == null || part.getSubmittedFileName() == null || part.getSubmittedFileName().trim().isEmpty()) {
-            return null;
-        }
-        String fileName = part.getSubmittedFileName();
-        byte[] bytes;
-        try (InputStream inputStream = part.getInputStream()) {
-            bytes = inputStream.readAllBytes();
-        }
-        return new FileUpload(fileName, bytes);
-    }
-
-    /**
-     * Hydrate un objet complexe à partir des paramètres HTTP et des fichiers
+     * Hydrate un objet racine à partir des paramètres de la requête HTTP.
      */
     public static Object hydrateObject(Class<?> clazz, HttpServletRequest request) throws Exception {
         Object instance = clazz.getDeclaredConstructor().newInstance();
-        boolean isMultipart = request.getContentType() != null && 
-                              request.getContentType().toLowerCase().startsWith("multipart/form-data");
 
         for (Field field : clazz.getDeclaredFields()) {
             String fieldName = field.getName();
             Class<?> fieldType = field.getType();
 
-            if (fieldType == FileUpload.class) {
-                // Attribut de type FileUpload dans un objet métier
-                if (isMultipart) {
+            if (field.getType() == FileUpload.class) {
+                if (request.getContentType() != null && request.getContentType().toLowerCase().startsWith("multipart/form-data")) {
                     Part part = request.getPart(fieldName);
                     FileUpload fileUpload = processFileUpload(part);
-                    invokeSetter(instance, clazz, fieldName, fieldType, fileUpload);
-                }
-            } else if (isBasicType(fieldType)) {
-                String parameterValue = request.getParameter(fieldName);
-                if (parameterValue != null && !parameterValue.trim().isEmpty()) {
-                    Object convertedValue = castParameterValue(parameterValue, fieldType);
-                    invokeSetter(instance, clazz, fieldName, fieldType, convertedValue);
+                    invokeSetter(instance, clazz, fieldName, field.getType(), fileUpload);
                 }
             } else {
-                // Objets imbriqués (ex: departement.nom)
+                // Attribut complexe (ex: Departement)
                 String prefix = fieldName + ".";
                 boolean hasNestedParams = false;
 
@@ -185,6 +151,9 @@ public class Utilitaires {
         return instance;
     }
 
+    /**
+     * Méthode récursive pour traiter les objets imbriqués via un préfixe (ex: "departement.").
+     */
     private static Object hydrateNestedObject(Class<?> clazz, String prefix, HttpServletRequest request) throws Exception {
         Object instance = clazz.getDeclaredConstructor().newInstance();
 
@@ -209,6 +178,9 @@ public class Utilitaires {
         return instance;
     }
 
+    /**
+     * Invoque le setter d'un champ ou y accède directement si le setter n'est pas présent.
+     */
     private static void invokeSetter(Object targetInstance, Class<?> clazz, String fieldName, Class<?> paramType, Object value) {
         String setterName = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
         try {
@@ -220,45 +192,61 @@ public class Utilitaires {
                 field.setAccessible(true);
                 field.set(targetInstance, value);
             } catch (Exception ex) {
-                // Ignore si inaccessible
+                // Ignore l'erreur si le champ est inaccessible
             }
         }
     }
+
+
+        public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
+            Parameter[] parameters = method.getParameters();
+            Object[] args = new Object[parameters.length];
+                
+            // Vérifier si la requête est multipart/form-data
+            boolean isMultipart = request.getContentType() != null && 
+                                request.getContentType().toLowerCase().startsWith("multipart/form-data");
+                
+            for (int i = 0; i < parameters.length; i++) {
+                Parameter param = parameters[i];
+                Class<?> paramType = param.getType();
+            
+                // 1. Injection de la Custom Session (ou HttpSession)
+                if (paramType == Session.class) {
+                    args[i] = new Session(request.getSession());
+                } 
+                else if (paramType == jakarta.servlet.http.HttpSession.class) {
+                    args[i] = request.getSession();
+                }
+                // 2. Injection de la requête HTTP brute
+                else if (paramType == HttpServletRequest.class) {
+                    args[i] = request;
+                }
+                // 3. Traitement des fichiers binaires FileUpload
+                else if (paramType == FileUpload.class) {
+                    if (isMultipart) {
+                        Part part = request.getPart(param.getName());
+                        args[i] = processFileUpload(part);
+                    }
+                } 
+                // 4. Types simples / primitifs (String, int, Date...)
+                else if (isBasicType(paramType)) {
+                    String paramName = param.getName();
+                    String paramValue = request.getParameter(paramName);
+                    args[i] = castParameterValue(paramValue, paramType);
+                } 
+                // 5. Objet métier / DTO complexe
+                else {
+                    args[i] = hydrateObject(paramType, request);
+                }
+            }
+        
+            return args;
+        }
+
 
     /**
-     * Résolution des arguments pour l'exécution d'une méthode de contrôleur
+     * Conversion d'une valeur String vers le type Java cible.
      */
-    public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
-        Parameter[] parameters = method.getParameters();
-        Object[] args = new Object[parameters.length];
-
-        boolean isMultipart = request.getContentType() != null && 
-                              request.getContentType().toLowerCase().startsWith("multipart/form-data");
-
-        for (int i = 0; i < parameters.length; i++) {
-            Parameter param = parameters[i];
-            Class<?> paramType = param.getType();
-
-            if (paramType == FileUpload.class) {
-                // Cas 1 : Le paramètre de la méthode est directement FileUpload
-                if (isMultipart) {
-                    Part part = request.getPart(param.getName());
-                    args[i] = processFileUpload(part);
-                }
-            } else if (isBasicType(paramType)) {
-                // Cas 2 : Types basiques (String, int...)
-                String paramName = param.getName();
-                String paramValue = request.getParameter(paramName);
-                args[i] = castParameterValue(paramValue, paramType);
-            } else {
-                // Cas 3 : Objets complexes
-                args[i] = hydrateObject(paramType, request);
-            }
-        }
-
-        return args;
-    }
-
     public static Object castParameterValue(String value, Class<?> type) {
         if (value == null || (value.trim().isEmpty() && type != String.class)) {
             if (type == int.class || type == double.class || type == float.class || type == long.class) return 0;
@@ -274,5 +262,41 @@ public class Utilitaires {
         if (type == java.sql.Date.class) return java.sql.Date.valueOf(value);
 
         return value;
+    }
+
+    /**
+     * Extrait un Part Servlet et le transforme en objet FileUpload du Framework
+     */
+    public static FileUpload processFileUpload(Part part) throws Exception {
+        if (part == null || part.getSubmittedFileName() == null || part.getSubmittedFileName().trim().isEmpty()) {
+            return null;
+        }
+
+        String fileName = part.getSubmittedFileName();
+        byte[] bytes;
+
+        try (InputStream inputStream = part.getInputStream()) {
+            bytes = inputStream.readAllBytes();
+        }
+
+        return new FileUpload(fileName, bytes);
+    }
+
+    
+
+    /**
+     * Charge une propriété depuis app.properties
+     */
+    public static String getProperty(String key) {
+        try (InputStream input = Utilitaires.class.getClassLoader().getResourceAsStream("app.properties")) {
+            if (input == null) {
+                return null;
+            }
+            java.util.Properties prop = new java.util.Properties();
+            prop.load(input);
+            return prop.getProperty(key);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

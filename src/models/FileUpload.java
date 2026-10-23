@@ -31,10 +31,10 @@ public class FileUpload {
         this.bytes = bytes;
     }
 
-    public void saveTo(String directoryPath) throws IOException {
+public void saveTo(String directoryPath) throws IOException {
         File dir = new File(directoryPath);
         if (!dir.exists()) {
-            dir.mkdirs();
+            dir.mkdirs(); // Crée le répertoire s'il n'existe pas
         }
         File targetFile = new File(dir, this.filename);
         try (FileOutputStream fos = new FileOutputStream(targetFile)) {

@@ -23,7 +23,8 @@ import utilitaires.Utilitaires;
 import com.google.gson.Gson;
 import annotations.ApiRest;
 
-@MultipartConfig // OBLIGATOIRE : Permet à Tomcat d'intercepter les requêtes multipart/form-data
+@MultipartConfig //pour intercepter request.getParts()
+
 public class FrontServletController extends HttpServlet {
 
     @SuppressWarnings("unchecked")
