@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
 
 import jakarta.servlet.http.Part;
@@ -199,49 +200,54 @@ public class Utilitaires {
 
 
         public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
-            Parameter[] parameters = method.getParameters();
-            Object[] args = new Object[parameters.length];
-                
-            // Vérifier si la requête est multipart/form-data
-            boolean isMultipart = request.getContentType() != null && 
-                                request.getContentType().toLowerCase().startsWith("multipart/form-data");
-                
-            for (int i = 0; i < parameters.length; i++) {
-                Parameter param = parameters[i];
-                Class<?> paramType = param.getType();
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
             
-                // 1. Injection de la Custom Session (ou HttpSession)
-                if (paramType == Session.class) {
-                    args[i] = new Session(request.getSession());
-                } 
-                else if (paramType == jakarta.servlet.http.HttpSession.class) {
-                    args[i] = request.getSession();
-                }
-                // 2. Injection de la requête HTTP brute
-                else if (paramType == HttpServletRequest.class) {
-                    args[i] = request;
-                }
-                // 3. Traitement des fichiers binaires FileUpload
-                else if (paramType == FileUpload.class) {
-                    if (isMultipart) {
-                        Part part = request.getPart(param.getName());
-                        args[i] = processFileUpload(part);
-                    }
-                } 
-                // 4. Types simples / primitifs (String, int, Date...)
-                else if (isBasicType(paramType)) {
-                    String paramName = param.getName();
-                    String paramValue = request.getParameter(paramName);
-                    args[i] = castParameterValue(paramValue, paramType);
-                } 
-                // 5. Objet métier / DTO complexe
-                else {
-                    args[i] = hydrateObject(paramType, request);
-                }
-            }
+        // Vérifier si la requête est multipart/form-data
+        boolean isMultipart = request.getContentType() != null && 
+                            request.getContentType().toLowerCase().startsWith("multipart/form-data");
+            
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter param = parameters[i];
+            Class<?> paramType = param.getType();
         
-            return args;
+            // 1. Injection de la Custom Session
+            if (paramType == Session.class) {
+                args[i] = new Session(request.getSession());
+            } 
+            // 2. Injection de la HttpSession standard
+            else if (paramType == jakarta.servlet.http.HttpSession.class) {
+                args[i] = request.getSession();
+            }
+            // 3. Injection du ServletContext (Évite l'erreur d'hydratation)
+            else if (paramType == ServletContext.class) {
+                args[i] = request.getServletContext();
+            }
+            // 4. Injection de la requête HTTP brute
+            else if (paramType == HttpServletRequest.class) {
+                args[i] = request;
+            }
+            // 5. Traitement des fichiers binaires FileUpload
+            else if (paramType == FileUpload.class) {
+                if (isMultipart) {
+                    Part part = request.getPart(param.getName());
+                    args[i] = processFileUpload(part);
+                }
+            } 
+            // 6. Types simples / primitifs (String, int, Date...)
+            else if (isBasicType(paramType)) {
+                String paramName = param.getName();
+                String paramValue = request.getParameter(paramName);
+                args[i] = castParameterValue(paramValue, paramType);
+            } 
+            // 7. Objet métier / DTO complexe
+            else {
+                args[i] = hydrateObject(paramType, request);
+            }
         }
+    
+        return args;
+    }
 
 
     /**
