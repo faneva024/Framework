@@ -12,9 +12,8 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 
-import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
-
+import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.Part;
 import models.FileUpload;
 import java.io.InputStream;
@@ -198,8 +197,7 @@ public class Utilitaires {
         }
     }
 
-
-        public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
+    public static Object[] resolveArguments(Method method, HttpServletRequest request) throws Exception {
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
             
@@ -249,7 +247,6 @@ public class Utilitaires {
         return args;
     }
 
-
     /**
      * Conversion d'une valeur String vers le type Java cible.
      */
@@ -287,8 +284,6 @@ public class Utilitaires {
 
         return new FileUpload(fileName, bytes);
     }
-
-    
 
     /**
      * Charge une propriété depuis app.properties

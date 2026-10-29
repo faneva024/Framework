@@ -39,6 +39,13 @@ public class FrontServletController extends HttpServlet {
         }
         // Stockage de la clé dans le ServletContext pour y accéder globalement une seule fois
         getServletContext().setAttribute("sessionKey", sessionKey);
+
+        // 2. Récupération de la clé du rôle en session 
+        String sessionRoleKey = getServletContext().getInitParameter("sessionRoleName");
+        if (sessionRoleKey == null || sessionRoleKey.trim().isEmpty()) {
+            sessionRoleKey = "userRole";
+        }
+        getServletContext().setAttribute("sessionRoleKey", sessionRoleKey);
     }
 
     @SuppressWarnings("unchecked")
@@ -80,21 +87,49 @@ public class FrontServletController extends HttpServlet {
             // 3. Récupération de la méthode d'action ciblée
             Method method = mapping.getMethode();
 
+           // -----------------------------------------------------------------
+            // 4-VÉRIFICATION D'AUTHENTIFICATION ET DES RÔLES (@Auth) - SPRINT 10
             // -----------------------------------------------------------------
-            // 4. VÉRIFICATION D'AUTHENTIFICATION PAR CONFIGURATION (@Auth)
-            // -----------------------------------------------------------------
-            if (method.isAnnotationPresent(Auth.class) || controllerClass.isAnnotationPresent(Auth.class)) {
+            Auth authAnnotation = method.getAnnotation(Auth.class);
+            if (authAnnotation == null) {
+                authAnnotation = controllerClass.getAnnotation(Auth.class);
+            }
+
+            if (authAnnotation != null || controllerClass.isAnnotationPresent(Auth.class)) {
                 HttpSession httpSession = req.getSession(false);
                 
-                // Récupération de la clé de session configurée dynamiquement
                 String sessionKey = (String) getServletContext().getAttribute("sessionKey");
+                String sessionRoleKey = (String) getServletContext().getAttribute("sessionRoleKey");
+
                 Object user = (httpSession != null) ? httpSession.getAttribute(sessionKey) : null;
 
+                // 1. Contrôle d'authentification : l'utilisateur doit être connecté
                 if (user == null) {
                     res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Accès refusé : Vous devez être connecté pour accéder à cette ressource.");
-                    return; // Interrompt l'exécution si non authentifié
+                    return;
+                }
+
+                // 2. Contrôle d'autorisation par rôle (si spécifié dans @Auth)
+                if (authAnnotation != null && authAnnotation.role().length > 0) {
+                    String[] allowedRoles = authAnnotation.role();
+                    Object userRoleObj = (httpSession != null) ? httpSession.getAttribute(sessionRoleKey) : null;
+                    String userRole = (userRoleObj != null) ? userRoleObj.toString() : "";
+
+                    boolean hasRole = false;
+                    for (String role : allowedRoles) {
+                        if (role.equalsIgnoreCase(userRole)) {
+                            hasRole = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasRole) {
+                        res.sendError(HttpServletResponse.SC_FORBIDDEN, "Accès interdit : Votre rôle (" + userRole + ") ne vous autorise pas à exécuter cette action.");
+                        return;
+                    }
                 }
             }
+
 
             // 5. Résolution des arguments de la méthode (Data Binding : Paramètres, Session, FileUpload, Objets)
             Object[] args = Utilitaires.resolveArguments(method, req);
