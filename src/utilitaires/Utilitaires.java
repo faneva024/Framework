@@ -47,7 +47,12 @@ public class Utilitaires {
             throw new IllegalArgumentException("Aucun répertoire trouvé pour le package " + packageName);
         }
 
-        File directory = new File(resource.getFile());
+        if (!"file".equals(resource.getProtocol())) {
+            throw new IllegalArgumentException("Le package " + packageName
+                    + " doit être un dossier (WEB-INF/classes) et non un JAR.");
+        }
+        // toURI() décode correctement les espaces et caractères spéciaux du chemin
+        File directory = new File(resource.toURI());
         List<Class<?>> classes = new ArrayList<>();
 
         if (directory.exists()) {
@@ -127,6 +132,13 @@ public class Utilitaires {
                     Part part = request.getPart(fieldName);
                     FileUpload fileUpload = processFileUpload(part);
                     invokeSetter(instance, clazz, fieldName, field.getType(), fileUpload);
+                }
+            } else if (isBasicType(fieldType)) {
+                // Attribut simple de l'objet racine (ex: nom, age, dateNaissance)
+                String parameterValue = request.getParameter(fieldName);
+                if (parameterValue != null && !parameterValue.trim().isEmpty()) {
+                    Object convertedValue = castParameterValue(parameterValue, fieldType);
+                    invokeSetter(instance, clazz, fieldName, fieldType, convertedValue);
                 }
             } else {
                 // Attribut complexe (ex: Departement)
@@ -251,18 +263,32 @@ public class Utilitaires {
      * Conversion d'une valeur String vers le type Java cible.
      */
     public static Object castParameterValue(String value, Class<?> type) {
-        if (value == null || (value.trim().isEmpty() && type != String.class)) {
-            if (type == int.class || type == double.class || type == float.class || type == long.class) return 0;
+        boolean vide = (value == null || (value.trim().isEmpty() && type != String.class));
+        if (vide) {
+            if (type == int.class) return 0;
+            if (type == long.class) return 0L;
+            if (type == double.class) return 0.0;
+            if (type == float.class) return 0f;
+            if (type == short.class) return (short) 0;
+            if (type == byte.class) return (byte) 0;
             if (type == boolean.class) return false;
+            if (type == char.class) return '\0';
             return null;
         }
 
         if (type == String.class) return value;
-        if (type == int.class || type == Integer.class) return Integer.parseInt(value);
-        if (type == double.class || type == Double.class) return Double.parseDouble(value);
-        if (type == boolean.class || type == Boolean.class) return Boolean.parseBoolean(value);
-        if (type == float.class || type == Float.class) return Float.parseFloat(value);
-        if (type == java.sql.Date.class) return java.sql.Date.valueOf(value);
+
+        String v = value.trim();
+        if (type == int.class || type == Integer.class) return Integer.parseInt(v);
+        if (type == long.class || type == Long.class) return Long.parseLong(v);
+        if (type == short.class || type == Short.class) return Short.parseShort(v);
+        if (type == byte.class || type == Byte.class) return Byte.parseByte(v);
+        if (type == double.class || type == Double.class) return Double.parseDouble(v);
+        if (type == float.class || type == Float.class) return Float.parseFloat(v);
+        if (type == boolean.class || type == Boolean.class) return Boolean.parseBoolean(v);
+        if (type == char.class || type == Character.class) return v.charAt(0);
+        if (type == java.sql.Date.class) return java.sql.Date.valueOf(v);
+        if (type == java.util.Date.class) return new java.util.Date(java.sql.Date.valueOf(v).getTime());
 
         return value;
     }

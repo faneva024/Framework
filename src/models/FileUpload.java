@@ -31,7 +31,10 @@ public class FileUpload {
         this.bytes = bytes;
     }
 
-public void saveTo(String directoryPath) throws IOException {
+    /**
+     * Méthode utilitaire pour sauvegarder facilement le fichier sur le disque
+     */
+    public void saveTo(String directoryPath) throws IOException {
         File dir = new File(directoryPath);
         if (!dir.exists()) {
             dir.mkdirs(); // Crée le répertoire s'il n'existe pas

@@ -25,25 +25,24 @@ import com.google.gson.Gson;
 import annotations.ApiRest;
 import annotations.Auth;
 
-@MultipartConfig //pour intercepter request.getParts()
+@MultipartConfig
 
 public class FrontServletController extends HttpServlet {
 
     @Override
     public void init() throws ServletException {
         super.init();
-        // Récupération du nom de la variable de session configuré dans le web.xml (<context-param>)
+        // 1. Récupération de la clé utilisateur en session
         String sessionKey = getServletContext().getInitParameter("sessionName");
         if (sessionKey == null || sessionKey.trim().isEmpty()) {
-            sessionKey = "sessionUser"; // Valeur par défaut si non spécifiée
+            throw new ServletException("Paramètre global 'sessionName' manquant dans le web.xml");
         }
-        // Stockage de la clé dans le ServletContext pour y accéder globalement une seule fois
         getServletContext().setAttribute("sessionKey", sessionKey);
 
-        // 2. Récupération de la clé du rôle en session 
+        // 2. Récupération de la clé du rôle en session (Sprint 10)
         String sessionRoleKey = getServletContext().getInitParameter("sessionRoleName");
         if (sessionRoleKey == null || sessionRoleKey.trim().isEmpty()) {
-            sessionRoleKey = "userRole";
+            throw new ServletException("Paramètre global 'sessionRoleName' manquant dans le web.xml");
         }
         getServletContext().setAttribute("sessionRoleKey", sessionRoleKey);
     }
@@ -52,7 +51,6 @@ public class FrontServletController extends HttpServlet {
     protected void processRequest(HttpServletRequest req, HttpServletResponse res)
             throws ServletException, IOException {
         
-        // Récupération de la table de routage initialisée par le Listener du framework
         Map<UrlMethode, Mapping> urlMappings = (Map<UrlMethode, Mapping>) getServletContext().getAttribute("routes");
 
         if (urlMappings == null) {
@@ -65,7 +63,6 @@ public class FrontServletController extends HttpServlet {
         String contexte = req.getContextPath();
         String urlRecherchee = url.substring(contexte.length());
 
-        // Recherche du mapping correspondant à l'URL et à la méthode HTTP
         Mapping mapping = urlMappings.get(new UrlMethode(urlRecherchee, methode));
 
         if (mapping == null) {
@@ -76,18 +73,15 @@ public class FrontServletController extends HttpServlet {
         try {
             res.setContentType("text/html;charset=UTF-8");
 
-            // 1. Récupération du conteneur Spring IoC
             WebApplicationContext springContext = WebApplicationContextUtils.getRequiredWebApplicationContext(getServletContext());
 
-            // 2. Instanciation dynamique du contrôleur géré par Spring
             String controllerPackage = getServletContext().getInitParameter("Controllers");
             Class<?> controllerClass = Class.forName(controllerPackage + "." + mapping.getNomClasse());
             Object controller = springContext.getBean(controllerClass);
             
-            // 3. Récupération de la méthode d'action ciblée
             Method method = mapping.getMethode();
 
-           // -----------------------------------------------------------------
+            // -----------------------------------------------------------------
             // 4-VÉRIFICATION D'AUTHENTIFICATION ET DES RÔLES (@Auth) - SPRINT 10
             // -----------------------------------------------------------------
             Auth authAnnotation = method.getAnnotation(Auth.class);
@@ -130,18 +124,13 @@ public class FrontServletController extends HttpServlet {
                 }
             }
 
-
-            // 5. Résolution des arguments de la méthode (Data Binding : Paramètres, Session, FileUpload, Objets)
+            // Résolution des arguments (Data Binding)
             Object[] args = Utilitaires.resolveArguments(method, req);
 
-            // 6. Invocation de la méthode d'action du contrôleur
+            // Invocation de la méthode d'action
             Object retour = method.invoke(controller, args);
 
-       
-            // -----------------------------------------------------------------
-            // 7. TRAITEMENT DE LA RÉPONSE (API REST ou ModelView)
-                 // Traitement @ApiRest
-            // -----------------------------------------------------------------
+            // Traitement de la réponse
             if (method.isAnnotationPresent(ApiRest.class)) {
                 res.setContentType("application/json;charset=UTF-8");
                 PrintWriter out = res.getWriter();
@@ -153,7 +142,6 @@ public class FrontServletController extends HttpServlet {
                     out.print(gson.toJson(retour));
                 }
             } else {
-                // Comportement classique
                 if (retour instanceof ModelView) {
                     ModelView mv = (ModelView) retour;
                     String prefix = getServletContext().getInitParameter("prefix");
@@ -162,7 +150,6 @@ public class FrontServletController extends HttpServlet {
                     if (prefix == null) prefix = "";
                     if (suffix == null) suffix = "";
                     
-                    // Transmission des attributs à la requête JSP
                     for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
                         req.setAttribute(entry.getKey(), entry.getValue());
                     }
